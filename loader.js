@@ -22,27 +22,8 @@
   };
   // ▲▲▲ ここを編集すると、配布されたメンバー全員のデフォルト定時が変わります ▲▲▲
 
-  // ▼▼▼ 日本の祝日リスト（出典: 内閣府 https://www8.cao.go.jp/chosei/shukujitsu/gaiyou.html） ▼▼▼
-  // 年1回（だいたい2月の閣議決定後）に更新してください。
-  // 振替休日も含みます。
-  const JP_HOLIDAYS = new Set([
-    // 2025
-    '2025-01-01','2025-01-13','2025-02-11','2025-02-23','2025-02-24',
-    '2025-03-20','2025-04-29','2025-05-03','2025-05-04','2025-05-05','2025-05-06',
-    '2025-07-21','2025-08-11','2025-09-15','2025-09-23','2025-10-13',
-    '2025-11-03','2025-11-23','2025-11-24',
-    // 2026
-    '2026-01-01','2026-01-02','2026-01-12','2026-02-11','2026-02-23',
-    '2026-03-20','2026-04-29','2026-05-03','2026-05-04','2026-05-05','2026-05-06',
-    '2026-07-20','2026-08-11','2026-09-21','2026-09-22','2026-09-23','2026-10-12',
-    '2026-11-03','2026-11-23',
-    // 2027
-    '2027-01-01','2027-01-11','2027-02-11','2027-02-23',
-    '2027-03-21','2027-03-22','2027-04-29','2027-05-03','2027-05-04','2027-05-05',
-    '2027-07-19','2027-08-11','2027-09-20','2027-09-23','2027-10-11',
-    '2027-11-03','2027-11-23',
-  ]);
-  // ▲▲▲ 祝日リスト ▲▲▲
+  // 祝日判定は iQube の画面に表示されているクラス（td.holiday）から動的に取得する。
+  // これにより、年次メンテナンス不要 + 会社独自の休日設定にも自動対応する。
 
   const STORAGE_KEY = 'iqubeHelper.userTimes.v1';
   const HOST_PATTERN = /(^|\.)iqube\.net$/i;
@@ -149,16 +130,29 @@
     throw new Error('authenticity_token をHTMLから抽出できませんでした（Consoleにレスポンス全文を出力）');
   }
 
-  // ---------- 既存タイムカードの取得（備考あり日リスト構築用） ----------
-  // 指定月のタイムカード一覧HTMLを取得し、備考欄が空でない日のYYYY-MM-DD Set を返す。
+  // ---------- 既存タイムカードの取得（備考あり日 + 祝日リスト構築用） ----------
+  // 指定月のタイムカード一覧HTMLを取得し、以下2つのSetを返す:
+  //  - remarksDates: 備考欄が空でない日のYYYY-MM-DD
+  //  - holidayDates: <td class="holiday"> でマークされている日のYYYY-MM-DD
   // 月またぎの日付配列にも対応するため、関係する月だけ取得してマージする。
-  async function fetchRemarksDates(months) {
-    // months: Set<'YYYY-MM'>
-    const result = new Set();
+  // 取得結果は同一セッション内でメモ化（重複fetchを避ける）。
+  const monthCache = new Map(); // key: 'YYYY-MM', value: { remarks: Set, holidays: Set }
+
+  async function fetchMonthData(months) {
+    const remarksDates = new Set();
+    const holidayDates = new Set();
     for (const ym of months) {
+      if (monthCache.has(ym)) {
+        const cached = monthCache.get(ym);
+        cached.remarks.forEach(d => remarksDates.add(d));
+        cached.holidays.forEach(d => holidayDates.add(d));
+        continue;
+      }
       const [y, m] = ym.split('-').map(n => parseInt(n, 10));
       const dateParam = `${y}/${String(m).padStart(2,'0')}/01`;
       const url = `/time_cards?_=${Date.now()}&date=${encodeURIComponent(dateParam)}`;
+      const localRemarks = new Set();
+      const localHolidays = new Set();
       try {
         const res = await fetch(url, {
           method: 'GET',
@@ -166,40 +160,58 @@
           headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'text/html, */*' },
         });
         if (!res.ok) {
-          console.warn('[iQube Helper] timecard fetch failed:', ym, res.status);
+          console.warn('[iQube Helper] month fetch failed:', ym, res.status);
+          monthCache.set(ym, { remarks: localRemarks, holidays: localHolidays });
           continue;
         }
         const html = await res.text();
         const doc = new DOMParser().parseFromString(html, 'text/html');
-        // 各日付の行: <tr> 内に「N日(曜)」セル + 出社..戻りの4セル + 編集2セル + 備考セル
-        // 月画面のテーブル構造を踏まえ、weekday クラスの隣の行を解析
+
+        // 各行を走査。日付セルは td (width="60") で「N(曜)」形式、
+        // クラスが saturday / sunday / holiday のいずれかなら休日
         const rows = doc.querySelectorAll('tr');
         rows.forEach(tr => {
           const tds = tr.querySelectorAll('td');
-          if (tds.length < 8) return;
-          // 日付は weekday クラスがあるセル: 「1(金)」のような形式
-          const weekdayTd = tr.querySelector('td.weekday');
-          if (!weekdayTd) return;
-          const dayMatch = weekdayTd.textContent.match(/^(\d{1,2})/);
+          if (tds.length < 4) return;
+          // 日付セルを探す: width="60" or 「N(曜)」テキストパターン
+          let dayTd = null;
+          for (const td of tds) {
+            const txt = (td.textContent || '').trim();
+            if (/^\d{1,2}\([月火水木金土日]\)$/.test(txt)) {
+              dayTd = td;
+              break;
+            }
+          }
+          if (!dayTd) return;
+          const dayMatch = dayTd.textContent.trim().match(/^(\d{1,2})/);
           if (!dayMatch) return;
           const day = parseInt(dayMatch[1], 10);
-          // 備考セル = 行の最後のtd（または最後から2番目）
-          // 構造: [月名] [日] [出] [退] [外] [戻] [編集○] [編集🔍] [備考]
+          const ymd = `${y}-${String(m).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+
+          // 祝日判定: 日付セルが class="holiday" を持つ
+          // （sunday/saturday は曜日判定で別途扱うのでここでは含めない）
+          if (dayTd.classList.contains('holiday')) {
+            localHolidays.add(ymd);
+          }
+
+          // 備考セル: 最後のtd
           const remarksTd = tds[tds.length - 1];
           const remarks = (remarksTd?.textContent || '').trim();
-          // '---' や空白のみ、ハイフン記号などは空扱い
           const isEmpty = remarks === '' || remarks === '---' || remarks === '—' || /^[-—\s]*$/.test(remarks);
           if (!isEmpty) {
-            const ymd = `${y}-${String(m).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-            result.add(ymd);
+            localRemarks.add(ymd);
             console.log('[iQube Helper] 備考あり:', ymd, '→', remarks);
           }
         });
+        console.log(`[iQube Helper] ${ym}: 祝日${localHolidays.size}件, 備考あり${localRemarks.size}件`);
       } catch (e) {
-        console.warn('[iQube Helper] fetchRemarksDates error for', ym, e);
+        console.warn('[iQube Helper] fetchMonthData error for', ym, e);
       }
+      monthCache.set(ym, { remarks: localRemarks, holidays: localHolidays });
+      localRemarks.forEach(d => remarksDates.add(d));
+      localHolidays.forEach(d => holidayDates.add(d));
     }
-    return result;
+    return { remarksDates, holidayDates };
   }
 
   // ---------- 日付ユーティリティ ----------
@@ -227,11 +239,13 @@
     const w = d.getDay();
     return w === 0 || w === 6;
   }
-  function isHoliday(d) {
-    return JP_HOLIDAYS.has(fmtYmd(d));
-  }
-  function isOffDay(d) {
-    return isWeekend(d) || isHoliday(d);
+  // 祝日判定は事前に取得した holidayDates (Set) を参照する。
+  // 月別取得をまだしていない時点（月一括ループ初回）では、ひとまず土日判定だけ。
+  // 取得後に再フィルタするので、ここでは「土日のみ」で粗くフィルタしておけば足りる。
+  function isOffDay(d, holidaySet) {
+    if (isWeekend(d)) return true;
+    if (holidaySet && holidaySet.has(fmtYmd(d))) return true;
+    return false;
   }
 
   // ---------- 打刻 API（1日分） ----------
@@ -276,18 +290,36 @@
       return { ok: 0, ng: 0 };
     }
 
-    // 2) 備考欄が入っている日を取得してスキップ
+    // 2) 月別データ取得（祝日 + 備考あり日）
     logEl.insertAdjacentHTML('beforeend',
-      `<div style="color:#888;">📋 備考欄付きの日を確認中…</div>`);
+      `<div style="color:#888;">📋 祝日・備考欄を確認中…</div>`);
     const months = new Set(valid.map(d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`));
     let remarksDates = new Set();
+    let holidayDates = new Set();
     try {
-      remarksDates = await fetchRemarksDates(months);
+      const data = await fetchMonthData(months);
+      remarksDates = data.remarksDates;
+      holidayDates = data.holidayDates;
     } catch (e) {
       logEl.insertAdjacentHTML('beforeend',
-        `<div style="color:#f44336;">⚠️ 備考チェックに失敗: ${e.message}（続行します）</div>`);
+        `<div style="color:#f44336;">⚠️ 月別データ取得に失敗: ${e.message}（続行します）</div>`);
     }
-    const beforeRemarksFilter = valid.length;
+
+    // 2-a) 祝日スキップ（呼び出し元で既にスキップ済みの場合もあるが二重防御）
+    const skippedByHoliday = [];
+    valid = valid.filter(d => {
+      if (holidayDates.has(fmtYmd(d))) {
+        skippedByHoliday.push(fmtYmd(d));
+        return false;
+      }
+      return true;
+    });
+    if (skippedByHoliday.length > 0) {
+      logEl.insertAdjacentHTML('beforeend',
+        `<div style="color:#9c27b0;">🎌 祝日 ${skippedByHoliday.length}件 はスキップ: ${skippedByHoliday.join(', ')}</div>`);
+    }
+
+    // 2-b) 備考あり日スキップ
     const skippedByRemarks = [];
     valid = valid.filter(d => {
       if (remarksDates.has(fmtYmd(d))) {
@@ -608,10 +640,11 @@
     const [y, m] = v.split('-').map(n => parseInt(n, 10));
     const skipWeekend = $('iqhSkipWeekend').checked;
     const daysInMonth = new Date(y, m, 0).getDate();
+    // 月一括では、土日のみここで除外。祝日はbulkPunch内で取得後に再フィルタされる。
     const dates = [];
     for (let d = 1; d <= daysInMonth; d++) {
       const dt = new Date(y, m - 1, d);
-      if (skipWeekend && isOffDay(dt)) continue;
+      if (skipWeekend && isWeekend(dt)) continue;
       dates.push(dt);
     }
     await bulkPunch(dates, userTimes, logEl);
@@ -640,7 +673,7 @@
       const t = new Date(to);   t.setHours(0,0,0,0);
       if (f.getTime() !== t.getTime() || dates.length === 0) {
         for (let d = new Date(f); d <= t; d.setDate(d.getDate()+1)) {
-          if (skipWeekend && isOffDay(d)) continue;
+          if (skipWeekend && isWeekend(d)) continue;
           dates.push(new Date(d));
         }
       }

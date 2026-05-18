@@ -52,19 +52,15 @@ push 後、数分以内にメンバー全員に反映される（ブラウザキ
 javascript:(()=>{const s=document.createElement('script');s.src='https://koichimiyasaka.github.io/iqube-helper/loader.js?v='+Date.now();document.body.appendChild(s);})();
 ```
 
-## 祝日リストの更新
+## 祝日判定
 
-`loader.js` 冒頭の `JP_HOLIDAYS` に 2025〜2027 年の祝日が内蔵されています。
-**2028年以降を扱うようになったら追記してください**。
+祝日リストはハードコードしていません。
+**iQube画面で赤色表示されている日（`<td class="holiday">`）を動的に判定**しています。
 
-祝日データは [内閣府の公式ページ](https://www8.cao.go.jp/chosei/shukujitsu/gaiyou.html) から取得できます。
-
-```javascript
-const JP_HOLIDAYS = new Set([
-  // 2028
-  '2028-01-01', '2028-01-10', ...
-]);
-```
+メリット:
+- 年次メンテナンス不要（2028年問題なし）
+- 会社の独自休日（年末年始・創立記念日など）も自動対応
+- iQube の判定基準と完全一致
 
 ## 仕組み
 
