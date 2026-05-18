@@ -149,6 +149,59 @@
     throw new Error('authenticity_token をHTMLから抽出できませんでした（Consoleにレスポンス全文を出力）');
   }
 
+  // ---------- 既存タイムカードの取得（備考あり日リスト構築用） ----------
+  // 指定月のタイムカード一覧HTMLを取得し、備考欄が空でない日のYYYY-MM-DD Set を返す。
+  // 月またぎの日付配列にも対応するため、関係する月だけ取得してマージする。
+  async function fetchRemarksDates(months) {
+    // months: Set<'YYYY-MM'>
+    const result = new Set();
+    for (const ym of months) {
+      const [y, m] = ym.split('-').map(n => parseInt(n, 10));
+      const dateParam = `${y}/${String(m).padStart(2,'0')}/01`;
+      const url = `/time_cards?_=${Date.now()}&date=${encodeURIComponent(dateParam)}`;
+      try {
+        const res = await fetch(url, {
+          method: 'GET',
+          credentials: 'same-origin',
+          headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'text/html, */*' },
+        });
+        if (!res.ok) {
+          console.warn('[iQube Helper] timecard fetch failed:', ym, res.status);
+          continue;
+        }
+        const html = await res.text();
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        // 各日付の行: <tr> 内に「N日(曜)」セル + 出社..戻りの4セル + 編集2セル + 備考セル
+        // 月画面のテーブル構造を踏まえ、weekday クラスの隣の行を解析
+        const rows = doc.querySelectorAll('tr');
+        rows.forEach(tr => {
+          const tds = tr.querySelectorAll('td');
+          if (tds.length < 8) return;
+          // 日付は weekday クラスがあるセル: 「1(金)」のような形式
+          const weekdayTd = tr.querySelector('td.weekday');
+          if (!weekdayTd) return;
+          const dayMatch = weekdayTd.textContent.match(/^(\d{1,2})/);
+          if (!dayMatch) return;
+          const day = parseInt(dayMatch[1], 10);
+          // 備考セル = 行の最後のtd（または最後から2番目）
+          // 構造: [月名] [日] [出] [退] [外] [戻] [編集○] [編集🔍] [備考]
+          const remarksTd = tds[tds.length - 1];
+          const remarks = (remarksTd?.textContent || '').trim();
+          // '---' や空白のみ、ハイフン記号などは空扱い
+          const isEmpty = remarks === '' || remarks === '---' || remarks === '—' || /^[-—\s]*$/.test(remarks);
+          if (!isEmpty) {
+            const ymd = `${y}-${String(m).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+            result.add(ymd);
+            console.log('[iQube Helper] 備考あり:', ymd, '→', remarks);
+          }
+        });
+      } catch (e) {
+        console.warn('[iQube Helper] fetchRemarksDates error for', ym, e);
+      }
+    }
+    return result;
+  }
+
   // ---------- 日付ユーティリティ ----------
   function todayLocal() {
     const t = new Date();
@@ -211,16 +264,47 @@
 
   // ---------- 一括打刻（共通ロジック） ----------
   async function bulkPunch(dates, times, logEl) {
-    const valid = dates.filter(d => !isFuture(d));
-    const skipped = dates.length - valid.length;
-    if (skipped > 0) {
+    // 1) 未来日フィルタ
+    let valid = dates.filter(d => !isFuture(d));
+    const futureSkipped = dates.length - valid.length;
+    if (futureSkipped > 0) {
       logEl.insertAdjacentHTML('beforeend',
-        `<div style="color:#888;">⚠️ 未来日 ${skipped}件 はスキップ</div>`);
+        `<div style="color:#888;">⚠️ 未来日 ${futureSkipped}件 はスキップ</div>`);
     }
     if (valid.length === 0) {
       logEl.insertAdjacentHTML('beforeend', `<div style="color:#f44336;">対象日がありません</div>`);
       return { ok: 0, ng: 0 };
     }
+
+    // 2) 備考欄が入っている日を取得してスキップ
+    logEl.insertAdjacentHTML('beforeend',
+      `<div style="color:#888;">📋 備考欄付きの日を確認中…</div>`);
+    const months = new Set(valid.map(d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`));
+    let remarksDates = new Set();
+    try {
+      remarksDates = await fetchRemarksDates(months);
+    } catch (e) {
+      logEl.insertAdjacentHTML('beforeend',
+        `<div style="color:#f44336;">⚠️ 備考チェックに失敗: ${e.message}（続行します）</div>`);
+    }
+    const beforeRemarksFilter = valid.length;
+    const skippedByRemarks = [];
+    valid = valid.filter(d => {
+      if (remarksDates.has(fmtYmd(d))) {
+        skippedByRemarks.push(fmtYmd(d));
+        return false;
+      }
+      return true;
+    });
+    if (skippedByRemarks.length > 0) {
+      logEl.insertAdjacentHTML('beforeend',
+        `<div style="color:#ff9800;">⚠️ 備考あり ${skippedByRemarks.length}件 はスキップ: ${skippedByRemarks.join(', ')}</div>`);
+    }
+    if (valid.length === 0) {
+      logEl.insertAdjacentHTML('beforeend', `<div style="color:#f44336;">打刻対象日が0件になりました</div>`);
+      return { ok: 0, ng: 0 };
+    }
+
     if (!confirm(`${valid.length}日分を打刻します。よろしいですか？`)) {
       return { ok: 0, ng: 0, canceled: true };
     }
