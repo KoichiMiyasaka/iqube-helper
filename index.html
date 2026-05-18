@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>iQube クイック打刻 - インストール手順</title>
+<style>
+  :root {
+    --primary: #4CAF50;
+    --bg: #fafafa;
+    --text: #333;
+    --muted: #666;
+    --border: #e0e0e0;
+    --code-bg: #2d2d2d;
+    --code-text: #f5f5f5;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Hiragino Sans", "Helvetica Neue", Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    margin: 0;
+    padding: 24px 16px 80px;
+  }
+  .container { max-width: 720px; margin: 0 auto; }
+  h1 {
+    color: var(--primary);
+    border-bottom: 3px solid var(--primary);
+    padding-bottom: 8px;
+    font-size: 24px;
+  }
+  h2 {
+    margin-top: 36px;
+    padding-left: 12px;
+    border-left: 4px solid var(--primary);
+    font-size: 18px;
+  }
+  h3 { font-size: 15px; margin-top: 24px; }
+  .lead {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin: 16px 0 24px;
+    color: var(--muted);
+  }
+  .bookmarklet {
+    display: block;
+    background: var(--primary);
+    color: #fff !important;
+    text-decoration: none;
+    padding: 14px 20px;
+    border-radius: 8px;
+    font-weight: bold;
+    text-align: center;
+    margin: 12px 0;
+    font-size: 16px;
+    box-shadow: 0 4px 12px rgba(76,175,80,0.3);
+  }
+  .bookmarklet:hover { background: #43a047; }
+  .code-block {
+    background: var(--code-bg);
+    color: var(--code-text);
+    padding: 12px 14px;
+    border-radius: 6px;
+    overflow-x: auto;
+    font-family: "SF Mono", Consolas, Menlo, monospace;
+    font-size: 12px;
+    word-break: break-all;
+    white-space: pre-wrap;
+    user-select: all;
+  }
+  .step {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin: 12px 0;
+  }
+  .step-num {
+    display: inline-block;
+    background: var(--primary);
+    color: #fff;
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    text-align: center;
+    line-height: 24px;
+    font-weight: bold;
+    margin-right: 8px;
+    font-size: 13px;
+  }
+  .device-tabs {
+    display: flex;
+    gap: 4px;
+    margin: 16px 0 0;
+    border-bottom: 2px solid var(--border);
+  }
+  .device-tab {
+    flex: 1;
+    padding: 10px;
+    background: #eee;
+    border: none;
+    cursor: pointer;
+    font-weight: bold;
+    color: var(--muted);
+    border-radius: 8px 8px 0 0;
+    font-size: 14px;
+  }
+  .device-tab.active {
+    background: var(--primary);
+    color: #fff;
+  }
+  .device-panel { display: none; padding: 16px 0; }
+  .device-panel.active { display: block; }
+  .note {
+    background: #fff8e1;
+    border-left: 4px solid #ffc107;
+    padding: 10px 14px;
+    margin: 12px 0;
+    font-size: 13px;
+    color: #6d5300;
+    border-radius: 0 4px 4px 0;
+  }
+  .warn {
+    background: #ffebee;
+    border-left: 4px solid #f44336;
+    padding: 10px 14px;
+    margin: 12px 0;
+    font-size: 13px;
+    color: #7a1c1c;
+    border-radius: 0 4px 4px 0;
+  }
+  kbd {
+    background: #f4f4f4;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    padding: 1px 6px;
+    font-family: monospace;
+    font-size: 12px;
+  }
+  .feature-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin: 16px 0;
+  }
+  .feature {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .feature strong { color: var(--primary); }
+  .feature p { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
+  footer {
+    margin-top: 60px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    text-align: center;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  @media (max-width: 600px) {
+    .feature-list { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <h1>🕒 iQube クイック打刻</h1>
+
+  <p class="lead">
+    iQube の勤怠入力をワンクリックで終わらせるツールです。<br>
+    PC（Chrome/Edge/Firefox/Safari）と iPhone Safari に対応しています。
+  </p>
+
+  <h2>機能</h2>
+  <div class="feature-list">
+    <div class="feature">
+      <strong>📅 今日を打刻</strong>
+      <p>ボタンを押した日の勤怠を即入力</p>
+    </div>
+    <div class="feature">
+      <strong>📆 月一括</strong>
+      <p>選択した月の平日を一括打刻</p>
+    </div>
+    <div class="feature">
+      <strong>✏️ 日付選択</strong>
+      <p>カスタム日付や範囲で一括打刻</p>
+    </div>
+    <div class="feature">
+      <strong>⚙️ 定時カスタマイズ</strong>
+      <p>出社・退社時刻を端末ごとに変更可能</p>
+    </div>
+  </div>
+
+  <h2>ブックマークレット（コピー用）</h2>
+  <p>
+    以下のコードをブックマークの URL として登録してください。<br>
+    PCなら下のリンクをそのままブックマークバーへドラッグしてもOKです。
+  </p>
+
+  <a class="bookmarklet"
+     href="javascript:(()=>{const s=document.createElement('script');s.src='https://koichimiyasaka.github.io/iqube-helper/loader.js?v='+Date.now();document.body.appendChild(s);})();">
+    🔖 iQube クイック打刻（ここをドラッグ）
+  </a>
+
+  <p style="font-size:13px;color:var(--muted);">▼ 直接コピーする場合はこちら（タップで全選択）</p>
+  <pre class="code-block" id="bookmarkletCode">javascript:(()=>{const s=document.createElement('script');s.src='https://koichimiyasaka.github.io/iqube-helper/loader.js?v='+Date.now();document.body.appendChild(s);})();</pre>
+
+  <h2>使い方</h2>
+
+  <div class="device-tabs">
+    <button class="device-tab active" data-device="pc">💻 PC（Chrome等）</button>
+    <button class="device-tab" data-device="iphone">📱 iPhone Safari</button>
+  </div>
+
+  <!-- PC -->
+  <div class="device-panel active" data-device="pc">
+    <div class="step">
+      <span class="step-num">1</span>
+      <strong>ブックマークバーを表示</strong><br>
+      <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd>（Mac）/ <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd>（Win）
+    </div>
+    <div class="step">
+      <span class="step-num">2</span>
+      <strong>上の緑色ボタンをブックマークバーへドラッグ</strong><br>
+      もしくは右クリック→「リンクをブックマークに追加」
+    </div>
+    <div class="step">
+      <span class="step-num">3</span>
+      <strong>iQube のタイムカード画面を開く</strong><br>
+      <a href="https://app.iqube.net/time_cards" target="_blank">https://app.iqube.net/time_cards</a>
+    </div>
+    <div class="step">
+      <span class="step-num">4</span>
+      <strong>ブックマークをクリック</strong><br>
+      画面右上にパネルが表示されます。
+    </div>
+  </div>
+
+  <!-- iPhone -->
+  <div class="device-panel" data-device="iphone">
+    <div class="warn">
+      <strong>iPhone Safari は手順がやや独特です。</strong>下の方法で確実に登録できます。
+    </div>
+    <div class="step">
+      <span class="step-num">1</span>
+      <strong>このページを Safari で開く</strong>（このページがすでに Safari なら OK）
+    </div>
+    <div class="step">
+      <span class="step-num">2</span>
+      <strong>このページをブックマークに追加</strong><br>
+      画面下の共有ボタン（□↑）→「ブックマークを追加」→「保存」<br>
+      <span style="font-size:12px;color:var(--muted);">※ どのページでもいいので、まず「枠」を作るだけ</span>
+    </div>
+    <div class="step">
+      <span class="step-num">3</span>
+      <strong>上のコードをコピー</strong><br>
+      （ブロック表示の <code>javascript:...</code> を長押し→全てを選択→コピー）
+    </div>
+    <div class="step">
+      <span class="step-num">4</span>
+      <strong>ブックマークを編集</strong><br>
+      Safari の本マーク → 編集 → さっき追加したブックマークをタップ<br>
+      タイトルを「<strong>iQube 打刻</strong>」に変更<br>
+      URL を全削除して、コピーしたコードを貼り付け → 完了
+    </div>
+    <div class="step">
+      <span class="step-num">5</span>
+      <strong>iQube のタイムカード画面を開く</strong><br>
+      <a href="https://app.iqube.net/time_cards">https://app.iqube.net/time_cards</a>
+    </div>
+    <div class="step">
+      <span class="step-num">6</span>
+      <strong>ブックマーク一覧から「iQube 打刻」をタップ</strong><br>
+      画面にパネルが出てきたら成功！
+    </div>
+    <div class="note">
+      💡 ホーム画面に追加したいときは、Safari でこのページを「ホーム画面に追加」してください。
+    </div>
+  </div>
+
+  <h2>定時の変更方法</h2>
+  <h3>方法1: 自分の端末だけ変える（おすすめ）</h3>
+  <p>
+    パネルの「<strong>設定</strong>」タブから出社・退社・外出・戻り時刻を変更できます。<br>
+    変更内容はそのブラウザにのみ保存されます。
+  </p>
+  <h3>方法2: 全員のデフォルトを変える（管理者向け）</h3>
+  <p>
+    GitHub の <a href="https://github.com/KoichiMiyasaka/iqube-helper/blob/main/loader.js" target="_blank">loader.js</a> 冒頭の <code>DEFAULT_TIMES</code> を編集して commit してください。<br>
+    数分後にメンバー全員に反映されます（ブラウザのキャッシュ次第）。
+  </p>
+
+  <h2>注意事項</h2>
+  <div class="warn">
+    <ul style="margin:0;padding-left:20px;">
+      <li>未来日には打刻できません（自動でスキップされます）</li>
+      <li>既に打刻済みの日は上書きされます</li>
+      <li>iQube のログインセッションが必要です（事前にログインしておいてください）</li>
+      <li>このツールは公式ではありません。動作は自己責任でお願いします</li>
+    </ul>
+  </div>
+
+  <footer>
+    <a href="https://github.com/KoichiMiyasaka/iqube-helper" target="_blank">GitHub リポジトリ</a>
+  </footer>
+</div>
+
+<script>
+  // タブ切り替え
+  document.querySelectorAll('.device-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.device-tab').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.device-panel').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.querySelector(`.device-panel[data-device="${btn.dataset.device}"]`).classList.add('active');
+    });
+  });
+  // コードブロックタップで全選択
+  document.getElementById('bookmarkletCode').addEventListener('click', function() {
+    const range = document.createRange();
+    range.selectNodeContents(this);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  });
+</script>
+</body>
+</html>
