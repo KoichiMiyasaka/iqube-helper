@@ -64,7 +64,7 @@
     // 既存のDOMにあれば優先（保険）
     const fromDom = document.querySelector('meta[name=csrf-token]')?.content
       || document.querySelector('input[name=authenticity_token]')?.value;
-    if (fromDom) return fromDom;
+    if (fromDom) { console.log('[iQube Helper] token from DOM'); return fromDom; }
     if (cachedToken) return cachedToken;
 
     // 任意の過去日で edit を叩いてトークンを抽出
@@ -78,14 +78,53 @@
     });
     if (!res.ok) throw new Error(`edit fetch failed: ${res.status}`);
     const html = await res.text();
-    // 1) input[name=authenticity_token] パターン
-    let m = html.match(/name=["']authenticity_token["']\s+value=["']([^"']+)["']/i)
-         || html.match(/value=["']([^"']+)["']\s+name=["']authenticity_token["']/i);
-    // 2) meta[name=csrf-token] パターン
-    if (!m) m = html.match(/<meta[^>]+name=["']csrf-token["'][^>]+content=["']([^"']+)["']/i);
-    if (!m) throw new Error('authenticity_token をHTMLから抽出できませんでした');
-    cachedToken = m[1];
-    return cachedToken;
+    console.log('[iQube Helper] edit response length:', html.length);
+    console.log('[iQube Helper] edit response (first 500 chars):', html.substring(0, 500));
+
+    // フォールバックで複数パターンを試す
+    const patterns = [
+      // input パターン（name先、value後）
+      /name\s*=\s*["']authenticity_token["'][^>]*?value\s*=\s*["']([^"']+)["']/i,
+      // input パターン（value先、name後）
+      /value\s*=\s*["']([^"']+)["'][^>]*?name\s*=\s*["']authenticity_token["']/i,
+      // meta タグ
+      /<meta[^>]+name\s*=\s*["']csrf-token["'][^>]+content\s*=\s*["']([^"']+)["']/i,
+      /<meta[^>]+content\s*=\s*["']([^"']+)["'][^>]+name\s*=\s*["']csrf-token["']/i,
+      // JSON的に埋め込まれている可能性
+      /["']authenticity_token["']\s*:\s*["']([^"']+)["']/i,
+      // hidden inputで属性順がランダムなパターン（より緩く）
+      /authenticity_token[^>]*?value\s*=\s*["']([^"']{20,})["']/i,
+      /value\s*=\s*["']([^"']{20,})["'][^>]*?authenticity_token/i,
+    ];
+    for (const re of patterns) {
+      const m = html.match(re);
+      if (m) {
+        console.log('[iQube Helper] token matched by:', re.source);
+        cachedToken = m[1];
+        return cachedToken;
+      }
+    }
+
+    // 最後の手段: DOMParser で <input> を直接探す
+    try {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const input = doc.querySelector('input[name="authenticity_token"]');
+      if (input?.value) {
+        console.log('[iQube Helper] token from DOMParser');
+        cachedToken = input.value;
+        return cachedToken;
+      }
+      const meta = doc.querySelector('meta[name="csrf-token"]');
+      if (meta?.content) {
+        cachedToken = meta.content;
+        return cachedToken;
+      }
+    } catch (e) {
+      console.warn('[iQube Helper] DOMParser failed:', e);
+    }
+
+    console.error('[iQube Helper] レスポンス全文:', html);
+    throw new Error('authenticity_token をHTMLから抽出できませんでした（Consoleにレスポンス全文を出力）');
   }
 
   // ---------- 日付ユーティリティ ----------
