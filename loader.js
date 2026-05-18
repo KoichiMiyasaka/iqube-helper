@@ -56,10 +56,36 @@
   let userTimes = loadUserTimes();
 
   // ---------- CSRFトークン取得 ----------
-  function getCsrfToken() {
-    return document.querySelector('meta[name=csrf-token]')?.content
-      || document.querySelector('input[name=authenticity_token]')?.value
-      || null;
+  // iQube は <meta csrf-token> を埋め込まず、編集モーダルを開いた時に
+  // サーバーから返るHTML内の <input name="authenticity_token"> で渡してくる。
+  // よって、編集エンドポイントを1回叩いてHTMLからトークンを抽出する。
+  let cachedToken = null;
+  async function getCsrfToken(dateForFetch) {
+    // 既存のDOMにあれば優先（保険）
+    const fromDom = document.querySelector('meta[name=csrf-token]')?.content
+      || document.querySelector('input[name=authenticity_token]')?.value;
+    if (fromDom) return fromDom;
+    if (cachedToken) return cachedToken;
+
+    // 任意の過去日で edit を叩いてトークンを抽出
+    const d = dateForFetch || todayLocal();
+    const dateStr = encodeURIComponent(fmtIQube(d));
+    const url = `/time_cards/edit?_=${Date.now()}&date=${dateStr}`;
+    const res = await fetch(url, {
+      method: 'GET',
+      credentials: 'same-origin',
+      headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'text/html, */*' },
+    });
+    if (!res.ok) throw new Error(`edit fetch failed: ${res.status}`);
+    const html = await res.text();
+    // 1) input[name=authenticity_token] パターン
+    let m = html.match(/name=["']authenticity_token["']\s+value=["']([^"']+)["']/i)
+         || html.match(/value=["']([^"']+)["']\s+name=["']authenticity_token["']/i);
+    // 2) meta[name=csrf-token] パターン
+    if (!m) m = html.match(/<meta[^>]+name=["']csrf-token["'][^>]+content=["']([^"']+)["']/i);
+    if (!m) throw new Error('authenticity_token をHTMLから抽出できませんでした');
+    cachedToken = m[1];
+    return cachedToken;
   }
 
   // ---------- 日付ユーティリティ ----------
@@ -90,8 +116,8 @@
 
   // ---------- 打刻 API（1日分） ----------
   async function punch(date, times) {
-    const token = getCsrfToken();
-    if (!token) throw new Error('CSRFトークンが見つかりません');
+    const token = await getCsrfToken(date);
+    if (!token) throw new Error('CSRFトークンが取得できません');
 
     const fd = new FormData();
     fd.append('_method', 'put');
@@ -111,6 +137,7 @@
       method: 'POST',
       body: fd,
       credentials: 'same-origin',
+      headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'text/html, */*' },
     });
     return r.status;
   }
