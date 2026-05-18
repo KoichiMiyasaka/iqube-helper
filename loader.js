@@ -22,6 +22,28 @@
   };
   // ▲▲▲ ここを編集すると、配布されたメンバー全員のデフォルト定時が変わります ▲▲▲
 
+  // ▼▼▼ 日本の祝日リスト（出典: 内閣府 https://www8.cao.go.jp/chosei/shukujitsu/gaiyou.html） ▼▼▼
+  // 年1回（だいたい2月の閣議決定後）に更新してください。
+  // 振替休日も含みます。
+  const JP_HOLIDAYS = new Set([
+    // 2025
+    '2025-01-01','2025-01-13','2025-02-11','2025-02-23','2025-02-24',
+    '2025-03-20','2025-04-29','2025-05-03','2025-05-04','2025-05-05','2025-05-06',
+    '2025-07-21','2025-08-11','2025-09-15','2025-09-23','2025-10-13',
+    '2025-11-03','2025-11-23','2025-11-24',
+    // 2026
+    '2026-01-01','2026-01-02','2026-01-12','2026-02-11','2026-02-23',
+    '2026-03-20','2026-04-29','2026-05-03','2026-05-04','2026-05-05','2026-05-06',
+    '2026-07-20','2026-08-11','2026-09-21','2026-09-22','2026-09-23','2026-10-12',
+    '2026-11-03','2026-11-23',
+    // 2027
+    '2027-01-01','2027-01-11','2027-02-11','2027-02-23',
+    '2027-03-21','2027-03-22','2027-04-29','2027-05-03','2027-05-04','2027-05-05',
+    '2027-07-19','2027-08-11','2027-09-20','2027-09-23','2027-10-11',
+    '2027-11-03','2027-11-23',
+  ]);
+  // ▲▲▲ 祝日リスト ▲▲▲
+
   const STORAGE_KEY = 'iqubeHelper.userTimes.v1';
   const HOST_PATTERN = /(^|\.)iqube\.net$/i;
   const PANEL_ID = 'iqubeHelperPanel';
@@ -152,6 +174,12 @@
     const w = d.getDay();
     return w === 0 || w === 6;
   }
+  function isHoliday(d) {
+    return JP_HOLIDAYS.has(fmtYmd(d));
+  }
+  function isOffDay(d) {
+    return isWeekend(d) || isHoliday(d);
+  }
 
   // ---------- 打刻 API（1日分） ----------
   async function punch(date, times) {
@@ -255,7 +283,7 @@
         </label>
         <label class="iqh-row">
           <input type="checkbox" id="iqhSkipWeekend" checked>
-          土日をスキップ
+          土日・祝日をスキップ
         </label>
         <div class="iqh-times-preview" id="iqhPreviewMonth"></div>
         <button class="iqh-btn iqh-btn-primary" id="iqhRunMonth">月の平日を打刻</button>
@@ -278,7 +306,7 @@
         </label>
         <label class="iqh-row">
           <input type="checkbox" id="iqhCustomSkipWeekend" checked>
-          範囲指定時に土日をスキップ
+          範囲指定時に土日・祝日をスキップ
         </label>
         <div class="iqh-times-preview" id="iqhPreviewCustom"></div>
         <button class="iqh-btn iqh-btn-primary" id="iqhRunCustom">選択した日を打刻</button>
@@ -499,7 +527,7 @@
     const dates = [];
     for (let d = 1; d <= daysInMonth; d++) {
       const dt = new Date(y, m - 1, d);
-      if (skipWeekend && isWeekend(dt)) continue;
+      if (skipWeekend && isOffDay(dt)) continue;
       dates.push(dt);
     }
     await bulkPunch(dates, userTimes, logEl);
@@ -528,7 +556,7 @@
       const t = new Date(to);   t.setHours(0,0,0,0);
       if (f.getTime() !== t.getTime() || dates.length === 0) {
         for (let d = new Date(f); d <= t; d.setDate(d.getDate()+1)) {
-          if (skipWeekend && isWeekend(d)) continue;
+          if (skipWeekend && isOffDay(d)) continue;
           dates.push(new Date(d));
         }
       }
